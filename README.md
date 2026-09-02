@@ -8,7 +8,7 @@ One keystroke updates your git identity *and* the account the GitHub CLI is auth
 [![CI](https://github.com/xRookieFight/gitswitch/actions/workflows/ci.yml/badge.svg)](https://github.com/xRookieFight/gitswitch/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/xRookieFight/gitswitch?display_name=tag&sort=semver)](https://github.com/xRookieFight/gitswitch/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.89%2B-orange.svg)](https://www.rust-lang.org)
 
 ![gitswitch demo](docs/images/demo.gif)
 

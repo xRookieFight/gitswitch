@@ -8,7 +8,7 @@ use crate::error::{Error, Result};
 use crate::model::Account;
 
 /// Schema version written to disk. Bump whenever the on-disk shape changes and
-/// add the corresponding step to [`migrate`].
+/// add the corresponding step to `migrate`.
 pub const SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

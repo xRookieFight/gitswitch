@@ -12,7 +12,7 @@ cargo test
 cargo run
 ```
 
-You need Rust 1.88 or newer (edition 2024). `git` and the GitHub CLI are useful for manual testing
+You need Rust 1.89 or newer (edition 2024). `git` and the GitHub CLI are useful for manual testing
 but are not required to build or to run the test suite.
 
 ## Before opening a pull request
