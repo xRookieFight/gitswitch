@@ -1,0 +1,36 @@
+[package]
+name = "gitswitch"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Switch between multiple GitHub accounts from a terminal UI - git identity and GitHub CLI auth stay in sync"
+authors = ["xRookieFight"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/xRookieFight/gitswitch"
+homepage = "https://github.com/xRookieFight/gitswitch"
+documentation = "https://github.com/xRookieFight/gitswitch#readme"
+keywords = ["github", "git", "tui", "cli", "accounts"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = ["docs/frames/*", "scripts/*", ".github/*"]
+
+[dependencies]
+clap = { version = "4.6.6", features = ["derive"] }
+crossterm = "0.29.0"
+directories = "6.0.0"
+keyring = { version = "4.2.0", features = ["apple-native-keyring-store"] }
+ratatui = "0.30.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.20"
+which = "8.0.6"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
