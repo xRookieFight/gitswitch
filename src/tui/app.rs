@@ -106,7 +106,11 @@ impl Form {
                 Field::new("Git email", "used for commit authorship"),
                 Field::new("Host", "github.com or a GitHub Enterprise host")
                     .with_value(DEFAULT_HOST),
-                Field::new("Token (optional)", "paste a PAT, or leave empty").masked(),
+                Field::new(
+                    "Token (optional)",
+                    "leave empty to sign in with your browser",
+                )
+                .masked(),
             ],
             cursor: 0,
             target: None,
@@ -150,12 +154,23 @@ pub struct Confirm {
     pub logout: bool,
 }
 
+/// A yes/no question that leads to an interactive `gh auth login`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ask {
+    pub title: String,
+    pub message: String,
+    pub host: String,
+    /// Account to switch to once the login succeeds.
+    pub account: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Screen {
     Onboarding,
     Accounts,
     Form(Form),
     Confirm(Confirm),
+    Ask(Ask),
     Help,
 }
 
@@ -198,6 +213,10 @@ pub struct App<'s, 'r> {
     pub toast: Option<Toast>,
     pub pending: Option<Pending>,
     pub busy: Option<String>,
+    /// Account to activate once an interactive login finishes.
+    login_target: Option<String>,
+    /// Sign-in question raised by the form, shown once the form closes.
+    pending_ask: Option<(Account, String)>,
 }
 
 impl<'s, 'r> App<'s, 'r> {
@@ -217,6 +236,8 @@ impl<'s, 'r> App<'s, 'r> {
             toast: None,
             pending: None,
             busy: None,
+            login_target: None,
+            pending_ask: None,
         };
         app.select_active();
         app
@@ -299,6 +320,7 @@ impl<'s, 'r> App<'s, 'r> {
             Screen::Accounts => self.on_accounts_key(key),
             Screen::Form(_) => self.on_form_key(key),
             Screen::Confirm(_) => self.on_confirm_key(key),
+            Screen::Ask(_) => self.on_ask_key(key),
         }
     }
 
@@ -357,7 +379,9 @@ impl<'s, 'r> App<'s, 'r> {
             }
             KeyCode::Char('A') => {
                 if let Some(account) = self.selected_account() {
-                    return Effect::InteractiveLogin(account.host.clone());
+                    let (host, name) = (account.host.clone(), account.name.clone());
+                    self.login_target = Some(name);
+                    return Effect::InteractiveLogin(host);
                 }
             }
             KeyCode::Char('d') | KeyCode::Delete | KeyCode::Backspace => {
@@ -453,6 +477,41 @@ impl<'s, 'r> App<'s, 'r> {
         Effect::None
     }
 
+    fn on_ask_key(&mut self, key: KeyEvent) -> Effect {
+        let Screen::Ask(ask) = self.screen.clone() else {
+            return Effect::None;
+        };
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                self.screen = self.default_screen();
+                self.login_target = Some(ask.account);
+                Effect::InteractiveLogin(ask.host)
+            }
+            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('q') => {
+                self.screen = self.default_screen();
+                let mut toast = Toast::new(Level::Info, "Skipped signing in");
+                toast.hint = Some("Press A to sign in later, or t to paste a token".into());
+                self.toast = Some(toast);
+                Effect::None
+            }
+            _ => Effect::None,
+        }
+    }
+
+    /// Offers the browser based `gh auth login` for an account that has no
+    /// usable GitHub CLI session yet.
+    fn ask_to_sign_in(&mut self, account: &Account, reason: &str) {
+        self.screen = Screen::Ask(Ask {
+            title: "Sign in to GitHub".into(),
+            message: format!(
+                "{reason}\n\nOpen the GitHub sign-in flow for `{}` now? gitswitch hands the terminal to `gh auth login`, which opens your browser - no token to copy.",
+                account.username
+            ),
+            host: account.host.clone(),
+            account: account.name.clone(),
+        });
+    }
+
     fn default_screen(&self) -> Screen {
         if self.service.store().is_empty() {
             Screen::Onboarding
@@ -507,7 +566,18 @@ impl<'s, 'r> App<'s, 'r> {
                 toast.hint = report.warnings.first().cloned();
                 self.toast = Some(toast);
             }
-            Err(err) => self.toast = Some(Toast::from_error(&err)),
+            Err(err) => {
+                let unauthenticated = matches!(err, Error::NotAuthenticated(_));
+                self.toast = Some(Toast::from_error(&err));
+                self.refresh();
+                if unauthenticated && let Some(account) = self.service.store().get(name).cloned() {
+                    self.ask_to_sign_in(
+                        &account,
+                        "This account is not signed in to the GitHub CLI.",
+                    );
+                }
+                return;
+            }
         }
         self.refresh();
     }
@@ -536,6 +606,9 @@ impl<'s, 'r> App<'s, 'r> {
                     self.selected = index;
                 }
                 self.toast = Some(toast);
+                if let Some((account, reason)) = self.pending_ask.take() {
+                    self.ask_to_sign_in(&account, &reason);
+                }
             }
             Err(err) => self.toast = Some(Toast::from_error(&err)),
         }
@@ -566,8 +639,13 @@ impl<'s, 'r> App<'s, 'r> {
             toast.hint = Some("No OS credential store found, so the token was not cached".into());
             toast
         } else {
+            // No token given: offer the browser flow straight away.
+            self.pending_ask = Some((
+                saved.clone(),
+                "Saved, but the GitHub CLI is not signed in as this account yet.".to_string(),
+            ));
             let mut toast = Toast::new(Level::Success, format!("Saved `{}`", saved.name));
-            toast.hint = Some("Press A to authenticate it with gh, or t to paste a token".into());
+            toast.hint = Some("Press A to sign in later, or t to paste a token".into());
             toast
         })
     }
@@ -613,15 +691,33 @@ impl<'s, 'r> App<'s, 'r> {
 
     /// Called after an interactive `gh auth login` returns.
     pub fn after_interactive_login(&mut self, result: crate::Result<()>) {
+        let target = self.login_target.take();
         match result {
             Ok(()) => {
                 self.refresh();
-                self.toast = Some(Toast::new(
-                    Level::Success,
-                    "GitHub CLI authentication finished",
-                ));
+                match target {
+                    // Finish what the user started: activate the account.
+                    Some(name) => self.pending = Some(Pending::Switch(name)),
+                    None => {
+                        self.toast = Some(Toast::new(
+                            Level::Success,
+                            "GitHub CLI authentication finished",
+                        ))
+                    }
+                }
             }
             Err(err) => self.toast = Some(Toast::from_error(&err)),
+        }
+    }
+
+    /// Raises the sign-in prompt for a saved account. Used by the screenshot
+    /// example so the documented flow stays in sync with the real one.
+    pub fn ask_to_sign_in_for_screenshot(&mut self, name: &str) {
+        if let Some(account) = self.service.store().get(name).cloned() {
+            self.ask_to_sign_in(
+                &account,
+                "Saved, but the GitHub CLI is not signed in as this account yet.",
+            );
         }
     }
 
@@ -822,10 +918,72 @@ mod tests {
         app.on_key(key(KeyCode::Enter));
         app.run_pending();
 
-        assert_eq!(app.screen, Screen::Accounts);
+        // Saving without a token offers the browser sign-in straight away.
+        assert!(matches!(app.screen, Screen::Ask(_)));
         assert_eq!(app.accounts().len(), 1);
         assert_eq!(app.accounts()[0].host, DEFAULT_HOST);
         assert_eq!(app.toast.as_ref().unwrap().level, Level::Success);
+    }
+
+    #[test]
+    fn accepting_the_sign_in_prompt_starts_the_browser_flow() {
+        let mut env = Env::new(ready_runner());
+        let mut service = env.service();
+        service
+            .store_mut()
+            .add(account("personal", "octocat"))
+            .unwrap();
+        let mut app = App::new(&mut service);
+        app.ask_to_sign_in(&account("personal", "octocat"), "not signed in");
+
+        assert_eq!(
+            app.on_key(key(KeyCode::Enter)),
+            Effect::InteractiveLogin("github.com".into())
+        );
+
+        // Once gh returns, the account is activated without another keystroke.
+        app.after_interactive_login(Ok(()));
+        assert_eq!(app.pending, Some(Pending::Switch("personal".into())));
+        app.run_pending();
+        assert_eq!(app.active_name(), Some("personal"));
+    }
+
+    #[test]
+    fn declining_the_sign_in_prompt_returns_to_the_list() {
+        let mut env = Env::new(ready_runner());
+        let mut service = env.service();
+        service
+            .store_mut()
+            .add(account("personal", "octocat"))
+            .unwrap();
+        let mut app = App::new(&mut service);
+        app.ask_to_sign_in(&account("personal", "octocat"), "not signed in");
+
+        assert_eq!(app.on_key(key(KeyCode::Char('n'))), Effect::None);
+        assert_eq!(app.screen, Screen::Accounts);
+        assert_eq!(app.toast.as_ref().unwrap().level, Level::Info);
+    }
+
+    #[test]
+    fn an_unauthenticated_switch_offers_the_browser_flow() {
+        let runner = MockRunner::new()
+            .ok("git --version", "git version 2.55.0")
+            .ok("gh --version", "gh version 2.97.0")
+            .ok("git config", "")
+            .status("gh auth status", 1, "", "not logged in");
+        let mut env = Env::new(runner);
+        let mut service = env.service();
+        service
+            .store_mut()
+            .add(account("personal", "octocat"))
+            .unwrap();
+        let mut app = App::new(&mut service);
+
+        app.on_key(key(KeyCode::Enter));
+        app.run_pending();
+
+        assert!(matches!(app.screen, Screen::Ask(_)));
+        assert_eq!(app.toast.as_ref().unwrap().level, Level::Error);
     }
 
     #[test]

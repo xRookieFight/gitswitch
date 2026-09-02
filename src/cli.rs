@@ -90,9 +90,12 @@ pub enum Command {
     },
     /// Rename a saved account.
     Rename { from: String, to: String },
-    /// Re-authenticate an account with a token read from stdin.
+    /// Sign an account in to the GitHub CLI.
+    ///
+    /// Opens the browser based `gh auth login` flow unless a token is piped in.
     Auth {
         account: String,
+        /// Read a personal access token from stdin instead of using the browser.
         #[arg(long)]
         token_stdin: bool,
     },
@@ -160,16 +163,13 @@ pub fn execute(cli: Cli, runner: &dyn Runner, secrets: &dyn SecretStore) -> Resu
             account,
             token_stdin,
         }) => {
-            if !token_stdin {
-                return Err(Error::InvalidInput(
-                    "pass --token-stdin and pipe a token, e.g. `gh auth token | gitswitch auth work --token-stdin`"
-                        .into(),
-                ));
+            if token_stdin {
+                let token = read_token_from_stdin()?;
+                service.reauthenticate(&account, &token)?;
+                println!("{} `{account}` re-authenticated", ok_mark());
+                return Ok(());
             }
-            let token = read_token_from_stdin()?;
-            service.reauthenticate(&account, &token)?;
-            println!("{} `{account}` re-authenticated", ok_mark());
-            Ok(())
+            browser_login(&mut service, &account)
         }
         Some(Command::Doctor) => doctor(&service),
     }
@@ -317,10 +317,35 @@ fn add(
         );
     } else {
         println!(
-            "  authenticate it with `gh auth login --hostname {}` or `gitswitch auth {}`",
-            saved.host, saved.name
+            "  sign it in with `gitswitch auth {}` (opens your browser)",
+            saved.name
         );
     }
+    Ok(())
+}
+
+/// Hands the terminal to `gh auth login` so the user can sign in through the
+/// browser, then activates the account.
+fn browser_login(service: &mut Service<'_>, name: &str) -> Result<()> {
+    let account = service.store().require(name)?.clone();
+    let gh = service.gh();
+    if !gh.is_installed() {
+        return Err(Error::MissingDependency("gh"));
+    }
+
+    println!(
+        "Opening the GitHub sign-in flow for `{}`...",
+        account.username
+    );
+    gh.login_interactive(&account.host)?;
+
+    let report = service.switch(&account.name, SwitchOptions::default())?;
+    println!(
+        "{} `{}` is signed in and active ({})",
+        ok_mark(),
+        report.account.name,
+        report.account.username
+    );
     Ok(())
 }
 

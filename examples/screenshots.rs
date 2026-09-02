@@ -89,6 +89,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     save(out, "08-confirm", &app)?;
     app.on_key(key(KeyCode::Char('n')));
 
+    // The browser sign-in prompt shown after saving an account without a token.
+    app.ask_to_sign_in_for_screenshot("open-source");
+    save(out, "09-signin", &app)?;
+
     println!("wrote frames to {}", out.display());
     Ok(())
 }

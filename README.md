@@ -33,6 +33,8 @@ switching to it applies both, then verifies the result.
 - **Verified switches** - after switching, gitswitch re-reads `gh auth status` and fails loudly if
   the result does not match.
 - **Drift detection** - the main screen tells you when git and `gh` disagree.
+- **Browser sign-in** - adding an account offers the GitHub CLI's browser flow right away; pasting a
+  personal access token is optional, not the default.
 - **Safe credential handling** - tokens go to the OS keychain, never to a config file, never to the
   screen, never to an error message.
 - **Onboarding** - a first run with no accounts explains the tool and checks your dependencies.
@@ -52,6 +54,10 @@ switching to it applies both, then verifies the result.
 | Keyboard help | Destructive action |
 | --- | --- |
 | ![Help](docs/images/04-help.png) | ![Confirm](docs/images/08-confirm.png) |
+
+| Browser sign-in |
+| --- |
+| ![Sign in](docs/images/09-signin.png) |
 
 ## Requirements
 
@@ -99,9 +105,10 @@ Run it with no arguments to open the interface:
 gitswitch
 ```
 
-The first launch walks you through adding an account. After that, pick a profile and press
-<kbd>Enter</kbd>: git and `gh` are updated, and the result is verified before the confirmation
-appears.
+The first launch walks you through adding an account: type the profile name, your GitHub username
+and the git identity, and gitswitch offers to sign you in through your browser - no token to copy
+unless you want one. After that, pick a profile and press <kbd>Enter</kbd>: git and `gh` are
+updated, and the result is verified before the confirmation appears.
 
 ### TUI controls
 
@@ -113,7 +120,7 @@ appears.
 | <kbd>a</kbd> | add an account |
 | <kbd>r</kbd> | rename the selected account |
 | <kbd>t</kbd> | store a new token for the selected account |
-| <kbd>A</kbd> | run `gh auth login` in this terminal |
+| <kbd>A</kbd> | sign in through your browser (`gh auth login`), then activate the account |
 | <kbd>d</kbd> / <kbd>Del</kbd> | remove the selected account (with confirmation) |
 | <kbd>L</kbd> | write the git identity globally or to the current repository |
 | <kbd>g</kbd> / <kbd>F5</kbd> | re-read git and `gh` state |
@@ -134,6 +141,7 @@ gitswitch switch work --local  # write the identity to this repository only
 gitswitch add                  # interactive wizard
 gitswitch remove work --yes    # delete a profile (add --logout to sign gh out too)
 gitswitch rename work job      # rename a profile
+gitswitch auth work            # sign in through the browser and activate the profile
 gitswitch doctor               # check git, gh and the credential store
 gitswitch version
 gitswitch --help
@@ -149,7 +157,8 @@ gitswitch add \
   --git-email you@acme.example
 ```
 
-Authenticate a profile from a token without it ever touching your shell history or the process list:
+`gitswitch auth <name>` opens the browser flow. For headless machines, pipe a token instead - it
+never touches your shell history or the process list:
 
 ```bash
 gh auth token | gitswitch auth work --token-stdin
@@ -183,8 +192,9 @@ missing and where to get it.
 
 ## Security
 
-- **Passwords are never accepted or stored.** The only secret gitswitch handles is a personal access
-  token, and only if you choose to give it one.
+- **Passwords are never accepted or stored.** The default sign-in path is the GitHub CLI's browser
+  flow, where gitswitch never sees a credential at all. The only secret it can handle is a personal
+  access token, and only if you choose to paste one.
 - **Tokens live in the OS credential store** (Keychain, Credential Manager, Secret Service), never in
   `accounts.json`. If no credential store is available, gitswitch says so and simply does not cache
   the token - it never falls back to plaintext.

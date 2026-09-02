@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-02
+
+### Added
+
+- Browser based sign-in as the primary path: saving an account without a token now offers the
+  GitHub CLI's `gh auth login` flow, and the account is activated automatically once it succeeds.
+- A sign-in prompt when switching to an account the GitHub CLI does not know, instead of only an
+  error message.
+- `gitswitch auth <account>` opens the browser flow; `--token-stdin` keeps the token path for
+  headless machines.
+
+### Changed
+
+- The token field in the add form is now explicitly optional and hints at the browser flow.
+- Pressing <kbd>A</kbd> activates the account after a successful login.
+
 ## [0.1.0] - 2026-09-02
 
 First public release.
@@ -33,5 +49,6 @@ First public release.
 - Test suite covering the store, git and GitHub CLI integration, the service layer, the CLI and the
   rendered interface, with no dependency on a real GitHub account.
 
-[Unreleased]: https://github.com/xRookieFight/gitswitch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/xRookieFight/gitswitch/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/xRookieFight/gitswitch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/xRookieFight/gitswitch/releases/tag/v0.1.0

@@ -58,6 +58,7 @@ pub fn draw(frame: &mut Frame, app: &App<'_, '_>) {
     match &app.screen {
         Screen::Form(_) => draw_form(frame, app),
         Screen::Confirm(_) => draw_confirm(frame, app),
+        Screen::Ask(_) => draw_ask(frame, app),
         Screen::Help => draw_help(frame),
         _ => {}
     }
@@ -239,6 +240,11 @@ fn draw_onboarding(frame: &mut Frame, app: &App<'_, '_>, area: Rect) {
             theme::value(),
         )),
         Line::from(""),
+        Line::from(Span::styled(
+            "Signing in happens in your browser through the GitHub CLI - there is no token to copy unless you want one.",
+            theme::label(),
+        )),
+        Line::from(""),
         Line::from(Span::styled("Requirements", theme::title())),
         dependency_line("git", status.git_installed, status.git_version.as_deref()),
         dependency_line("gh", status.gh_installed, status.gh_version.as_deref()),
@@ -347,6 +353,11 @@ fn draw_footer(frame: &mut Frame, app: &App<'_, '_>, area: Rect) {
             key_hint("y", "confirm"),
             key_hint("l", "toggle gh logout"),
             key_hint("n", "cancel"),
+        ]
+        .concat(),
+        Screen::Ask(_) => [
+            key_hint("y / \u{21b5}", "open the browser sign-in"),
+            key_hint("n", "later"),
         ]
         .concat(),
         Screen::Help => [key_hint("any key", "back")].concat(),
@@ -477,6 +488,42 @@ fn draw_confirm(frame: &mut Frame, app: &App<'_, '_>) {
     );
 }
 
+fn draw_ask(frame: &mut Frame, app: &App<'_, '_>) {
+    let Screen::Ask(ask) = &app.screen else {
+        return;
+    };
+
+    let area = popup(frame.area(), 64, 11);
+    frame.render_widget(Clear, area);
+
+    let mut lines: Vec<Line> = ask
+        .message
+        .split('\n')
+        .map(|line| Line::from(Span::styled(line.to_string(), theme::value())))
+        .collect();
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("y", theme::key()),
+        Span::styled(" sign in now    ", theme::label()),
+        Span::styled("n", theme::key()),
+        Span::styled(" later", theme::label()),
+    ]));
+
+    let block = Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme::ACCENT))
+        .title(Span::styled(
+            format!(" {} ", ask.title),
+            Style::default().fg(theme::ACCENT).bold(),
+        ))
+        .padding(Padding::horizontal(1));
+
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: true }).block(block),
+        area,
+    );
+}
+
 fn draw_help(frame: &mut Frame) {
     let area = popup(frame.area(), 64, 20);
     frame.render_widget(Clear, area);
@@ -488,7 +535,7 @@ fn draw_help(frame: &mut Frame) {
         ("a", "add a new account"),
         ("r", "rename the selected account"),
         ("t", "store a new token for the account"),
-        ("A", "run `gh auth login` in this terminal"),
+        ("A", "sign in with your browser (gh auth login)"),
         ("d / Del", "remove the selected account"),
         ("L", "write the git identity globally or per repository"),
         ("g / F5", "re-read git and gh state"),
